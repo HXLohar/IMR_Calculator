@@ -1,0 +1,49 @@
+Write a program, that accept a string input being a mahjong hand, and output is 2 things: total scored points, plus a list of achieved hand types along with their original/modified score
+There's two acceptable formats.
+Japanese style: s/p/m = bamboos (条), dots (饼), characters (万), 1z-7z correspond to ESWN winds, White, Green and Red.
+English style: b/c/d = bamboos (条), characters (万), dots (饼), E/S/W/N/R/G/Wh correspond to ESWN Winds, Red, Green, White.
+The input must be one of those format, no mixing.
+Example:
+[RRRR*][1b2b3b]4b5b6b7b8b9b9b + 9b* +LT
+Although there's no need to add a suffix for every tile. One suffix for multiple tiles of the same category is enough.
+[RRRR*][123b]4567899b + 9b* +LT
+Some explanation: * means win by self-drawn (or concealed quad for a call). +LT is a additional note that will be explained later on.
+(Those two shall be treated equally)
+
+STEP 1: determine whether the input is legal.
+13(+X)+1 tiles, +additional note (optional). Last one being the final tile that triggered the win.
+If not 13(+X)+1 tiles, or incorrect additional note, or illegal tiles, then it's illegal input. X=amount of quads, up to 4.
+Illegal tiles: in a set of Mahjong tiles, there's only 4 copies of each tile. Things like [1111c][123c] (there's 5x 1c!) are impossible.
+Up to 4 calls, represented with [].
+[123b] is a straight.
+[111b] is a triplet.
+[1111b] is a quad.
+[1111b*] is a concealed quad.
+If a call doesn't fit in any of above, it's illegal input. 
+If 5 or more calls, also illegal input.
+return value: True=legal input, False=illegal input.
+
+STEP 2: "Explain" the hand.
+Determine whether the entire 13+1=14 tiles is enough to form a winning hand or not.
+Various types exists.
+Try all those 7 ways to explain a hand. Some hand might have more than 1 way to explain, and only the one that scored the most amount of points are valid. If multiple ways to explain yields equal amount of points, the higher priority one is applied. (Classic>7P)
+13O: Thirteen Orphans: Must have no calls. Hand being 19b19c19d, ESWNRGWh, plus one of those.
+7P: Seven pairs: seven pairs without any calls. 4 of a kind can be considered two pairs as long as it's no a concealed quad already.
+Classic: 4 groups of (straight/triplet) plus a pair.
+(Highest priority) TTTTp/TTTSp/TTSSp/TSSSp/SSSSp, where T=triplet (or quad), S=straight, p=pair.
+
+Use the hand above for example
+[RRRR*][123b]4567899b + 9b* +LT
+There's already a quad and a straight, so only 2 more groups unsolved.
+Since there's calls involving 1 triplet/quad and 1 straight, the explanation must contain at least 1 T and at least 1 S, thus only TTTSp, TTSSp and TSSSp are possible.
+Now there's 8 tiles left. To make it easier just treat the final (winning) tile normally: 45678999b.
+First enumerate all possible ways to determine the pair. In this case it can only be a pair of 9b.
+Now there's 3N tiles left (N=2 in this case). Try to explain it as two (triplet/straight). Since there's no calls, you don't need to think about quads.
+And after some trial and error, you got it: it's 456b and 789b, two straights.
+
+Return value for step 2 should be a list or dictionary of all possible explainations that works. In this case, only 1. I'd expect a return value like this:
+'id': 1, 'type': 'TSSSp', hand: "[RRRR*][123b](456b)(789b)(99b)* +LT"
+
+STEP 3: evaluate the hand's points. 
+This will be a bit complex and not now. Todo list, ignore this for now.
+
