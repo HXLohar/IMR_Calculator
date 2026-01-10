@@ -789,7 +789,7 @@ def analyze_hand(input_str: str) -> Dict:
     return result
 
 
-def format_result(result: Dict) -> str:
+def format_result(result: Dict, show_scoring: bool = False) -> str:
     """Format analysis result for display."""
     lines = []
     lines.append(f"Input: {result['input']}")
@@ -812,6 +812,18 @@ def format_result(result: Dict) -> str:
         for exp in result['explanations']:
             lines.append(f"  {exp}")
 
+        # Show scoring if requested
+        if show_scoring:
+            try:
+                from fan import score_hand, format_scoring_result
+                lines.append(f"\n--- Scoring ---")
+                for i, exp in enumerate(result['explanations'], 1):
+                    score_result = score_hand(exp)
+                    lines.append(f"\nExplanation {i} ({exp.pattern_type}):")
+                    lines.append(format_scoring_result(score_result, 'c'))
+            except ImportError:
+                lines.append("\n(Scoring module not available)")
+
     return '\n'.join(lines)
 
 
@@ -819,10 +831,10 @@ def format_result(result: Dict) -> str:
 # INTERACTIVE MODE
 # =============================================================================
 
-def interactive_mode():
+def interactive_mode(show_scoring: bool = True):
     """Run the hand analyzer in interactive mode."""
     print("=" * 60)
-    print("Mahjong Hand Analyzer")
+    print("Mahjong Hand Analyzer (IMR Calculator)")
     print("=" * 60)
     print("\nSupported formats:")
     print("  English: b/c/d = bamboo/character/dot, E/S/W/N/R/G/Wh = honors")
@@ -830,6 +842,7 @@ def interactive_mode():
     print("\nFormat: [calls]hand_tiles + winning_tile[*] +notes")
     print("  * after winning tile = self-drawn (tsumo)")
     print("  * after call = concealed quad")
+    print("  +LT = Last Tile Win, +AQ = After Quad, +RQ = Robbing Quad")
     print("\nExample: [RRRR*][123b]4567899b + 9b* +LT")
     print("Enter 'quit' or 'q' to exit.\n")
 
@@ -843,7 +856,7 @@ def interactive_mode():
                 continue
 
             result = analyze_hand(hand_input)
-            print("\n" + format_result(result) + "\n")
+            print("\n" + format_result(result, show_scoring=show_scoring) + "\n")
 
         except KeyboardInterrupt:
             print("\nGoodbye!")
@@ -890,6 +903,23 @@ def run_tests():
 
         # Two concealed quads (16 tiles: 8 from quads + 8 hand)
         ("[1111b*][2222b*]3334455b + 5b*", "Two concealed quads"),
+
+        # New test cases from claude2.txt
+        # Test 1: 678b33344455cRR + 5c
+        # Expected: 2 explanations - SSSSp and TTTSp
+        ("678b33344455cRR + 5c", "SSSSp and TTTSp patterns"),
+
+        # Test 2: 3344556677899d + 8d (fixed: original had 78899, should be 77899)
+        # Expected: 4 explanations - SSSSp (3) and Seven Pairs
+        ("3344556677899d + 8d", "Multiple SSSSp and Seven Pairs"),
+
+        # Test 3: 2222333344455c + 4c
+        # Expected: 4 explanations - TTTSp, SSSSp(2) and Seven Pairs
+        ("2222333344455c + 4c", "TTTSp, SSSSp, Seven Pairs"),
+
+        # Test 4: 3355b2288c23445d + 6d
+        # Expected: False win (bluff) - no valid pattern
+        ("3355b2288c23445d + 6d", "Invalid: False win (bluff) - 4 pairs and 2 groups cannot win"),
     ]
 
     passed = 0
@@ -926,12 +956,26 @@ if __name__ == "__main__":
         if sys.argv[1] == "--test":
             run_tests()
         elif sys.argv[1] == "--interactive" or sys.argv[1] == "-i":
-            interactive_mode()
+            interactive_mode(show_scoring=True)
+        elif sys.argv[1] == "--no-score":
+            interactive_mode(show_scoring=False)
+        elif sys.argv[1] == "--help" or sys.argv[1] == "-h":
+            print("IMR Mahjong Hand Analyzer")
+            print("Usage:")
+            print("  python main.py                    Interactive mode with scoring")
+            print("  python main.py --test             Run test suite")
+            print("  python main.py --no-score         Interactive mode without scoring")
+            print("  python main.py <hand>             Analyze a single hand")
+            print("  python main.py --score <hand>     Analyze with scoring")
+        elif sys.argv[1] == "--score":
+            hand_input = ' '.join(sys.argv[2:])
+            result = analyze_hand(hand_input)
+            print(format_result(result, show_scoring=True))
         else:
-            # Treat as hand input
+            # Treat as hand input (with scoring by default)
             hand_input = ' '.join(sys.argv[1:])
             result = analyze_hand(hand_input)
-            print(format_result(result))
+            print(format_result(result, show_scoring=True))
     else:
-        # Default to interactive mode
-        interactive_mode()
+        # Default to interactive mode with scoring
+        interactive_mode(show_scoring=True)
