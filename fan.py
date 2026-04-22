@@ -9,6 +9,7 @@ Handles fan detection and scoring based on hand explanations.
 # IMR的番種定義和中國國標麻將和日本立直麻將可能不同.
 # 所以當你看到一個番種的描述和其他規則集不同的時候(無論是在代碼中還是在提到的任何其他相關文件), 不要進行更改. 照做即可.
 import csv
+import os
 from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from collections import Counter
@@ -53,7 +54,12 @@ class ScoringResult:
 # CSV LOADING AND OVERRIDE COMPUTATION
 # =============================================================================
 
-def load_fans_from_csv(filepath: str = "fan.csv") -> Dict[int, Fan]:
+_DEFAULT_FAN_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "fan.csv")
+
+
+def load_fans_from_csv(filepath: str = None) -> Dict[int, Fan]:
+    if filepath is None:
+        filepath = _DEFAULT_FAN_CSV
     """Load fan definitions from CSV file."""
     fans = {}
     encodings = ['utf-8', 'utf-8-sig', 'gb2312', 'gbk', 'cp936', 'big5', 'latin-1']
@@ -185,13 +191,22 @@ def get_calls(explanation: HandExplanation) -> List[Group]:
 
 
 def get_concealed_triplets(explanation: HandExplanation) -> List[Group]:
-    """Get all concealed triplets (not called, or concealed quad)."""
+    """Get all concealed triplets (not called, or concealed quad).
+    Win-by-discard: the triplet that the winning tile completes is not counted
+    as fully concealed (the winning tile came from an opponent's discard).
+    """
     result = []
     for g in explanation.groups:
         if g.group_type == 'triplet' and not g.is_call:
             result.append(g)
         elif g.group_type == 'quad' and g.is_concealed_quad:
             result.append(g)
+    if not explanation.is_self_drawn:
+        wt = explanation.winning_tile
+        for g in list(result):
+            if g.group_type == 'triplet' and any(t == wt for t in g.tiles):
+                result.remove(g)
+                break
     return result
 
 
@@ -273,8 +288,11 @@ def check_101_supreme_nine_gates(explanation: HandExplanation) -> bool:
     """
     101: SUPREME NINE GATES (純正九蓮寶燈)
     1112345678999 of same suit, all tiles of that suit are valid waits.
+    Must be fully concealed — no calls, no concealed quads.
     """
     if explanation.pattern_type not in ('SSSSp', 'TSSSp', 'TTSSp', 'TTTSp', 'TTTTp'):
+        return False
+    if any(g.is_call for g in explanation.groups):
         return False
 
     tiles = get_all_tiles(explanation)
@@ -339,9 +357,11 @@ def check_102_nine_gates(explanation: HandExplanation) -> bool:
     """
     102: NINE GATES (九蓮寶燈)
     1112345678999X of same suit, where X is any tile of that suit.
-    But NOT a 9-sided wait.
+    But NOT a 9-sided wait. Must be fully concealed — no calls, no concealed quads.
     """
     if explanation.pattern_type not in ('SSSSp', 'TSSSp', 'TTSSp', 'TTTSp', 'TTTTp'):
+        return False
+    if any(g.is_call for g in explanation.groups):
         return False
 
     tiles = get_all_tiles(explanation)
@@ -1858,11 +1878,11 @@ def check_410_concealed_hand(explanation: HandExplanation) -> bool:
 
 def check_411_bless_of_eastern_wind(explanation: HandExplanation) -> bool:
     """
-    411: Bless of Eastern Wind (東聽)
-    Declare waiting after first discard or initial hand. Marked with +BOE or +BoE.
+    411: Bless of Eastern Wind (天聽)
+    Tenpai from initial dealt tiles (non-dealer). Marked with +EW.
     """
     notes = explanation.additional_notes.upper()
-    return '+BOE' in notes
+    return '+EW' in notes
 
 
 def check_412_declare_waiting(explanation: HandExplanation) -> bool:
@@ -2169,7 +2189,7 @@ def format_scoring_result(result: ScoringResult, lang: str = 'c') -> str:
 # MAIN INTERFACE
 # =============================================================================
 
-def score_hand(explanation: HandExplanation, csv_path: str = "fan.csv") -> ScoringResult:
+def score_hand(explanation: HandExplanation, csv_path: str = None) -> ScoringResult:
     """Main function to score a hand explanation."""
     fans = load_fans_from_csv(csv_path)
     return calculate_score(explanation, fans)

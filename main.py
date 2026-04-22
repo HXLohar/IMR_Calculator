@@ -296,7 +296,7 @@ def parse_tiles_english(tile_str: str) -> List[Tile]:
         count = len(re.findall(pattern, remaining))
         for _ in range(count):
             tiles.append(Tile(tile_type, value))
-        remaining = re.sub(pattern, '', remaining, count=1) if count > 0 else remaining
+        remaining = re.sub(pattern, '', remaining)
 
     return tiles
 
@@ -369,7 +369,7 @@ def parse_hand(input_str: str) -> Tuple[Optional[ParsedHand], str]:
 
     hand_part = parts[0].strip()
     winning_part = parts[1].strip()
-    additional_notes = '+'.join(parts[2:]).strip() if len(parts) > 2 else ""
+    additional_notes = ('+' + '+'.join(parts[2:])).strip() if len(parts) > 2 else ""
 
     # Parse winning tile
     is_self_drawn = winning_part.endswith('*')
@@ -439,7 +439,29 @@ def validate_hand(parsed: ParsedHand) -> Tuple[bool, str]:
     tile_counts = Counter(all_tiles)
     for tile, count in tile_counts.items():
         if count > 4:
+            # Check if this is drawing dead: winning tile already maxed out in hand
+            if tile == parsed.winning_tile and Counter(parsed.hand_tiles)[tile] == 4:
+                return False, f"Drawing dead: 0 outs for {tile} (all 4 already in hand)"
             return False, f"Too many copies of {tile}: {count} (max 4)"
+
+    # Validate additional flags
+    notes = parsed.additional_notes.upper()
+    has_non_quad_calls = any(
+        c.call_type in (CallType.STRAIGHT, CallType.TRIPLET) for c in parsed.calls
+    )
+    has_quads = any(
+        c.call_type in (CallType.QUAD, CallType.CONCEALED_QUAD) for c in parsed.calls
+    )
+    if '+BOH' in notes and parsed.calls:
+        return False, "Blessing of Heaven (+BOH) requires no calls or concealed quads"
+    if '+BOE' in notes and parsed.calls:
+        return False, "Blessing of Earth (+BOE) requires no calls or concealed quads"
+    if '+EW' in notes and has_non_quad_calls:
+        return False, "Eastern Wind tenpai (+EW) cannot have open calls (quads only)"
+    if '+DW' in notes and has_non_quad_calls:
+        return False, "Declare Waiting (+DW) cannot have open calls (quads only)"
+    if '+AQ' in notes and not has_quads:
+        return False, "After Quad (+AQ) requires at least 1 quad"
 
     # Validate each call
     for call in parsed.calls:
@@ -572,25 +594,29 @@ def check_thirteen_orphans(tiles: List[Tile]) -> Optional[List[Group]]:
 def check_seven_pairs(tiles: List[Tile]) -> Optional[List[Group]]:
     """
     Check if tiles form Seven Pairs (七対子).
-    Requires: 7 different pairs.
+    A tile appearing 4 times counts as 2 pairs (Premium/Deluxe pair).
     """
     if len(tiles) != 14:
         return None
 
     tile_counts = Counter(tiles)
 
-    # Must have exactly 7 different tiles, each appearing exactly twice
-    if len(tile_counts) != 7:
-        return None
-
+    # Each tile must appear exactly 2 or 4 times (4 = deluxe/premium pair)
     for count in tile_counts.values():
-        if count != 2:
+        if count not in (2, 4):
             return None
 
-    # Create group representation
+    # Total pairs must equal 7
+    total_pairs = sum(count // 2 for count in tile_counts.values())
+    if total_pairs != 7:
+        return None
+
+    # Create group representation — 4-of-a-kind produces 2 pair groups
     groups = []
     for tile in sorted(tile_counts.keys()):
-        groups.append(Group('pair', [tile, tile], is_call=False))
+        num_pairs = tile_counts[tile] // 2
+        for _ in range(num_pairs):
+            groups.append(Group('pair', [tile, tile], is_call=False))
 
     return groups
 
@@ -888,7 +914,6 @@ def run_tests():
 
         # Japanese format - valid hand (5z=White dragon) (15 tiles with 1 quad)
         ("[5555z*][123s]4567899s + 9s* +LT", "Japanese format with white dragon quad"),
-
         # Japanese format - simple hand (14 tiles: 3+3+3+3+2)
         ("123s456s789s1112m + 2m*", "Japanese format simple hand"),
 
